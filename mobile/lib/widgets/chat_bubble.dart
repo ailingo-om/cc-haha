@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/message.dart';
+import 'thinking_block.dart';
+import 'tool_call_block.dart';
+import 'tool_result_block.dart';
 
-/// Renders a single chat message — text, thinking, tool use, tool result,
-/// permission request, error, or system notification.
-class ChatBubble extends StatefulWidget {
+/// Renders a chat message by dispatching to the appropriate block component.
+/// Component structure matches the desktop app: ThinkingBlock, ToolCallBlock, ToolResultBlock.
+class ChatBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isStreaming;
   final void Function()? onApprove;
@@ -18,44 +21,45 @@ class ChatBubble extends StatefulWidget {
   });
 
   @override
-  State<ChatBubble> createState() => _ChatBubbleState();
-}
-
-class _ChatBubbleState extends State<ChatBubble> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final message = widget.message;
-    final isStreaming = widget.isStreaming;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: () {
         switch (message.msgType) {
           case ChatMessageType.text:
-            return _textBubble(colorScheme, message, isStreaming);
+            return _textBubble(colorScheme);
           case ChatMessageType.thinking:
-            return _thinkingBubble(colorScheme, message);
+            return ThinkingBlock(
+              content: message.thinking ?? '',
+              isActive: isStreaming,
+            );
           case ChatMessageType.toolUse:
-            return _toolUseBubble(colorScheme, message, isStreaming);
+            return ToolCallBlock(
+              toolName: message.toolName ?? '',
+              toolInput: message.toolInput,
+              isStreaming: isStreaming,
+            );
           case ChatMessageType.toolResult:
-            return _toolResultBubble(colorScheme, message);
+            return ToolResultBlock(
+              content: message.toolResult,
+              isError: message.toolIsError,
+            );
           case ChatMessageType.permissionRequest:
-            return _permissionBubble(colorScheme, message);
+            return _permissionBubble(colorScheme);
           case ChatMessageType.status:
-            return _statusBubble(colorScheme, message);
+            return _statusBubble(colorScheme);
           case ChatMessageType.error:
-            return _errorBubble(colorScheme, message);
+            return _errorBubble(colorScheme);
           case ChatMessageType.system:
-            return _systemBubble(colorScheme, message);
+            return _systemBubble(colorScheme);
         }
       }(),
     );
   }
 
-  Widget _textBubble(ColorScheme colorScheme, ChatMessage message, bool isStreaming) {
+  Widget _textBubble(ColorScheme colorScheme) {
     final text = message.text ?? '';
     return Container(
       padding: const EdgeInsets.all(12),
@@ -65,6 +69,7 @@ class _ChatBubbleState extends State<ChatBubble> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           SelectableText(
             text,
@@ -80,178 +85,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     );
   }
 
-  Widget _thinkingBubble(ColorScheme colorScheme, ChatMessage message) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Text(
-        message.thinking ?? '',
-        style: TextStyle(
-          color: colorScheme.onSurfaceVariant,
-          fontStyle: FontStyle.italic,
-          fontSize: 13,
-        ),
-      ),
-    );
-  }
-
-  Widget _toolUseBubble(ColorScheme colorScheme, ChatMessage message, bool isStreaming) {
-    final toolName = message.toolName ?? '';
-    final hasInput = message.toolInput != null && message.toolInput!.isNotEmpty;
-
-    // Extract a short command summary for Bash tools
-    String summary = 'Tool: $toolName';
-    if (toolName == 'Bash' && hasInput) {
-      try {
-        final cmd = _extractJsonField(message.toolInput!, 'command');
-        if (cmd != null && cmd.length <= 60) {
-          summary = cmd;
-        } else if (cmd != null) {
-          summary = '${cmd.substring(0, 60)}...';
-        }
-      } catch (_) {}
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.indigo.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.indigo.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: hasInput ? () => setState(() => _expanded = !_expanded) : null,
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(Icons.terminal, size: 14, color: Colors.indigo.shade600),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      summary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.indigo.shade700,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                  if (hasInput)
-                    Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 16,
-                      color: Colors.indigo.shade400,
-                    ),
-                  if (isStreaming) const SizedBox(width: 4),
-                  if (isStreaming) _cursor(colorScheme),
-                ],
-              ),
-            ),
-          ),
-          if (_expanded && hasInput)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(top: 4),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.indigo.shade100.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: SelectableText(
-                message.toolInput!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.indigo.shade900,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _toolResultBubble(ColorScheme colorScheme, ChatMessage message) {
-    final hasContent = message.toolResult != null && message.toolResult!.isNotEmpty;
-    final isError = message.toolIsError;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isError ? Colors.red.shade50 : Colors.green.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isError ? Colors.red.shade200 : Colors.green.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: hasContent ? () => setState(() => _expanded = !_expanded) : null,
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    isError ? Icons.error_outline : Icons.check_circle_outline,
-                    size: 14,
-                    color: isError ? Colors.red.shade600 : Colors.green.shade600,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    isError ? 'Error' : 'Result',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isError ? Colors.red.shade700 : Colors.green.shade700,
-                    ),
-                  ),
-                  if (hasContent) ...[
-                    const Spacer(),
-                    Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 16,
-                      color: isError ? Colors.red.shade400 : Colors.green.shade400,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          if (_expanded && hasContent)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(top: 4),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isError ? Colors.red.shade100.withValues(alpha: 0.5) : Colors.green.shade100.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: SelectableText(
-                message.toolResult!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isError ? Colors.red.shade900 : Colors.green.shade900,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _permissionBubble(ColorScheme colorScheme, ChatMessage message) {
+  Widget _permissionBubble(ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -261,6 +95,7 @@ class _ChatBubbleState extends State<ChatBubble> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
@@ -281,10 +116,7 @@ class _ChatBubbleState extends State<ChatBubble> {
             const SizedBox(height: 4),
             Text(
               message.permissionDescription!,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.orange.shade800,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.orange.shade800),
             ),
           ],
           if (message.toolInput != null && message.toolInput!.isNotEmpty) ...[
@@ -298,11 +130,7 @@ class _ChatBubbleState extends State<ChatBubble> {
               ),
               child: SelectableText(
                 message.toolInput!,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: Colors.orange.shade900,
-                ),
+                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.orange.shade900),
                 maxLines: 6,
               ),
             ),
@@ -313,21 +141,17 @@ class _ChatBubbleState extends State<ChatBubble> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 OutlinedButton.icon(
-                  onPressed: widget.onDeny,
+                  onPressed: onDeny,
                   icon: const Icon(Icons.close, size: 16),
                   label: const Text('Deny'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red.shade700,
-                  ),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade700),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: widget.onApprove,
+                  onPressed: onApprove,
                   icon: const Icon(Icons.check, size: 16),
                   label: const Text('Approve'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                  ),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.green.shade600),
                 ),
               ],
             ),
@@ -349,7 +173,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     );
   }
 
-  Widget _statusBubble(ColorScheme colorScheme, ChatMessage message) {
+  Widget _statusBubble(ColorScheme colorScheme) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Center(
@@ -365,7 +189,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     );
   }
 
-  Widget _errorBubble(ColorScheme colorScheme, ChatMessage message) {
+  Widget _errorBubble(ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -389,7 +213,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     );
   }
 
-  Widget _systemBubble(ColorScheme colorScheme, ChatMessage message) {
+  Widget _systemBubble(ColorScheme colorScheme) {
     if (message.tokenUsage != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -405,7 +229,6 @@ class _ChatBubbleState extends State<ChatBubble> {
         ),
       );
     }
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Center(
@@ -430,16 +253,5 @@ class _ChatBubbleState extends State<ChatBubble> {
         borderRadius: BorderRadius.circular(2),
       ),
     );
-  }
-
-  /// Extract a field value from a JSON string like {"command": "ls -la"}.
-  String? _extractJsonField(String jsonStr, String field) {
-    // Simple regex extraction to avoid heavy JSON parsing
-    final regex = RegExp('"$field"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"');
-    final match = regex.firstMatch(jsonStr);
-    if (match != null) {
-      return match.group(1)?.replaceAll('\\"', '"').replaceAll('\\n', '\n');
-    }
-    return null;
   }
 }
