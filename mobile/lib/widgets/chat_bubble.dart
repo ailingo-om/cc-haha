@@ -3,7 +3,7 @@ import '../models/message.dart';
 
 /// Renders a single chat message — text, thinking, tool use, tool result,
 /// permission request, error, or system notification.
-class ChatBubble extends StatelessWidget {
+class ChatBubble extends StatefulWidget {
   final ChatMessage message;
   final bool isStreaming;
   final void Function()? onApprove;
@@ -18,35 +18,44 @@ class ChatBubble extends StatelessWidget {
   });
 
   @override
+  State<ChatBubble> createState() => _ChatBubbleState();
+}
+
+class _ChatBubbleState extends State<ChatBubble> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final message = widget.message;
+    final isStreaming = widget.isStreaming;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: () {
         switch (message.msgType) {
           case ChatMessageType.text:
-            return _textBubble(colorScheme);
+            return _textBubble(colorScheme, message, isStreaming);
           case ChatMessageType.thinking:
-            return _thinkingBubble(colorScheme);
+            return _thinkingBubble(colorScheme, message);
           case ChatMessageType.toolUse:
-            return _toolUseBubble(colorScheme);
+            return _toolUseBubble(colorScheme, message, isStreaming);
           case ChatMessageType.toolResult:
-            return _toolResultBubble(colorScheme);
+            return _toolResultBubble(colorScheme, message);
           case ChatMessageType.permissionRequest:
-            return _permissionBubble(colorScheme);
+            return _permissionBubble(colorScheme, message);
           case ChatMessageType.status:
-            return _statusBubble(colorScheme);
+            return _statusBubble(colorScheme, message);
           case ChatMessageType.error:
-            return _errorBubble(colorScheme);
+            return _errorBubble(colorScheme, message);
           case ChatMessageType.system:
-            return _systemBubble(colorScheme);
+            return _systemBubble(colorScheme, message);
         }
       }(),
     );
   }
 
-  Widget _textBubble(ColorScheme colorScheme) {
+  Widget _textBubble(ColorScheme colorScheme, ChatMessage message, bool isStreaming) {
     final text = message.text ?? '';
     return Container(
       padding: const EdgeInsets.all(12),
@@ -71,7 +80,7 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _thinkingBubble(ColorScheme colorScheme) {
+  Widget _thinkingBubble(ColorScheme colorScheme, ChatMessage message) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Text(
@@ -85,38 +94,74 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _toolUseBubble(ColorScheme colorScheme) {
+  Widget _toolUseBubble(ColorScheme colorScheme, ChatMessage message, bool isStreaming) {
+    final toolName = message.toolName ?? '';
+    final hasInput = message.toolInput != null && message.toolInput!.isNotEmpty;
+
+    // Extract a short command summary for Bash tools
+    String summary = 'Tool: $toolName';
+    if (toolName == 'Bash' && hasInput) {
+      try {
+        final cmd = _extractJsonField(message.toolInput!, 'command');
+        if (cmd != null && cmd.length <= 60) {
+          summary = cmd;
+        } else if (cmd != null) {
+          summary = '${cmd.substring(0, 60)}...';
+        }
+      } catch (_) {}
+    }
+
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.indigo.shade50,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.indigo.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(Icons.build, size: 16, color: Colors.indigo.shade700),
-              const SizedBox(width: 6),
-              Text(
-                'Tool: ${message.toolName ?? ''}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.indigo.shade700,
-                  fontSize: 13,
-                ),
+          InkWell(
+            onTap: hasInput ? () => setState(() => _expanded = !_expanded) : null,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.terminal, size: 14, color: Colors.indigo.shade600),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.indigo.shade700,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  if (hasInput)
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 16,
+                      color: Colors.indigo.shade400,
+                    ),
+                  if (isStreaming) const SizedBox(width: 4),
+                  if (isStreaming) _cursor(colorScheme),
+                ],
               ),
-            ],
+            ),
           ),
-          if (message.toolInput != null && message.toolInput!.isNotEmpty) ...[
-            const SizedBox(height: 6),
+          if (_expanded && hasInput)
             Container(
               width: double.infinity,
+              margin: const EdgeInsets.only(top: 4),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.indigo.shade100.withOpacity(0.5),
+                color: Colors.indigo.shade100.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: SelectableText(
@@ -128,76 +173,85 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-          if (isStreaming)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: _cursor(colorScheme),
-            ),
         ],
       ),
     );
   }
 
-  Widget _toolResultBubble(ColorScheme colorScheme) {
+  Widget _toolResultBubble(ColorScheme colorScheme, ChatMessage message) {
+    final hasContent = message.toolResult != null && message.toolResult!.isNotEmpty;
+    final isError = message.toolIsError;
+
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: message.toolIsError
-            ? Colors.red.shade50
-            : Colors.green.shade50,
-        borderRadius: BorderRadius.circular(12),
+        color: isError ? Colors.red.shade50 : Colors.green.shade50,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: message.toolIsError
-              ? Colors.red.shade200
-              : Colors.green.shade200,
+          color: isError ? Colors.red.shade200 : Colors.green.shade200,
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(
-                message.toolIsError ? Icons.error : Icons.check_circle,
-                size: 16,
-                color: message.toolIsError
-                    ? Colors.red.shade700
-                    : Colors.green.shade700,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                message.toolIsError ? 'Error' : 'Result',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: message.toolIsError
-                      ? Colors.red.shade700
-                      : Colors.green.shade700,
-                ),
-              ),
-            ],
-          ),
-          if (message.toolResult != null &&
-              message.toolResult!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            SelectableText(
-              message.toolResult!,
-              style: TextStyle(
-                fontSize: 12,
-                color: message.toolIsError
-                    ? Colors.red.shade900
-                    : Colors.green.shade900,
-                fontFamily: 'monospace',
+          InkWell(
+            onTap: hasContent ? () => setState(() => _expanded = !_expanded) : null,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    isError ? Icons.error_outline : Icons.check_circle_outline,
+                    size: 14,
+                    color: isError ? Colors.red.shade600 : Colors.green.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    isError ? 'Error' : 'Result',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: isError ? Colors.red.shade700 : Colors.green.shade700,
+                    ),
+                  ),
+                  if (hasContent) ...[
+                    const Spacer(),
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 16,
+                      color: isError ? Colors.red.shade400 : Colors.green.shade400,
+                    ),
+                  ],
+                ],
               ),
             ),
-          ],
+          ),
+          if (_expanded && hasContent)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isError ? Colors.red.shade100.withValues(alpha: 0.5) : Colors.green.shade100.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: SelectableText(
+                message.toolResult!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isError ? Colors.red.shade900 : Colors.green.shade900,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _permissionBubble(ColorScheme colorScheme) {
+  Widget _permissionBubble(ColorScheme colorScheme, ChatMessage message) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -233,8 +287,7 @@ class ChatBubble extends StatelessWidget {
               ),
             ),
           ],
-          if (message.toolInput != null &&
-              message.toolInput!.isNotEmpty) ...[
+          if (message.toolInput != null && message.toolInput!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Container(
               width: double.infinity,
@@ -260,7 +313,7 @@ class ChatBubble extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 OutlinedButton.icon(
-                  onPressed: onDeny,
+                  onPressed: widget.onDeny,
                   icon: const Icon(Icons.close, size: 16),
                   label: const Text('Deny'),
                   style: OutlinedButton.styleFrom(
@@ -269,7 +322,7 @@ class ChatBubble extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: onApprove,
+                  onPressed: widget.onApprove,
                   icon: const Icon(Icons.check, size: 16),
                   label: const Text('Approve'),
                   style: FilledButton.styleFrom(
@@ -282,7 +335,7 @@ class ChatBubble extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                '✔ Responded',
+                'Responded',
                 style: TextStyle(
                   color: colorScheme.onSurfaceVariant,
                   fontSize: 12,
@@ -296,7 +349,7 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _statusBubble(ColorScheme colorScheme) {
+  Widget _statusBubble(ColorScheme colorScheme, ChatMessage message) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Center(
@@ -312,7 +365,7 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _errorBubble(ColorScheme colorScheme) {
+  Widget _errorBubble(ColorScheme colorScheme, ChatMessage message) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -336,8 +389,7 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _systemBubble(ColorScheme colorScheme) {
-    // Show token usage if available
+  Widget _systemBubble(ColorScheme colorScheme, ChatMessage message) {
     if (message.tokenUsage != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -378,5 +430,16 @@ class ChatBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(2),
       ),
     );
+  }
+
+  /// Extract a field value from a JSON string like {"command": "ls -la"}.
+  String? _extractJsonField(String jsonStr, String field) {
+    // Simple regex extraction to avoid heavy JSON parsing
+    final regex = RegExp('"$field"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"');
+    final match = regex.firstMatch(jsonStr);
+    if (match != null) {
+      return match.group(1)?.replaceAll('\\"', '"').replaceAll('\\n', '\n');
+    }
+    return null;
   }
 }

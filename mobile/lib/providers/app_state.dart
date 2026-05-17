@@ -281,6 +281,14 @@ class AppState extends ChangeNotifier {
   }
 
   void sendMessage(String content) {
+    // Add user message to local list immediately
+    _messages.add(ChatMessage(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      sessionId: _activeSessionId ?? '',
+      msgType: ChatMessageType.text,
+      text: content,
+    ));
+
     if (_ws == null || !_ws!.isConnected) {
       _ws?.connect();
     }
