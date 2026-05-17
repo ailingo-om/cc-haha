@@ -1,8 +1,15 @@
+import 'dart:io' show Platform;
+
 /// Application configuration and constants.
 class AppConfig {
-  // Will be set by the user on the connect screen
-  static String serverUrl = 'https://p.v.ailingo.net';
+  // macOS connects to local server; mobile connects to remote via nginx
+  static String serverUrl = Platform.isMacOS
+      ? 'http://127.0.0.1:3456'
+      : 'https://p.v.ailingo.net';
   static String apiKey = '';
+
+  /// Whether this is running on a desktop OS (macOS).
+  static bool get isDesktop => Platform.isMacOS;
 
   /// JPush AppKey — from 极光控制台 → 应用设置.
   /// This is NOT a secret; it's embedded in the app.
