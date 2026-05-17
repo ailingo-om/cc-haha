@@ -15,6 +15,15 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  int _lastMessageCount = 0;
+  bool _initialScrollDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Schedule initial scroll after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
 
   @override
   void dispose() {
@@ -23,12 +32,44 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+  }
+
+  void _maybeScrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    // Auto-scroll only if user is near the bottom (within 200px)
+    if (position.maxScrollExtent - position.pixels < 200) {
+      _scrollToBottom();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final colorScheme = Theme.of(context).colorScheme;
     final messages = appState.messages;
     final streamingMessage = appState.streamingMessage;
+
+    // Auto-scroll on new messages
+    if (messages.length > _lastMessageCount) {
+      _lastMessageCount = messages.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_initialScrollDone) {
+          _initialScrollDone = true;
+          _scrollToBottom();
+        } else {
+          _maybeScrollToBottom();
+        }
+      });
+    }
+
+    // Auto-scroll while streaming
+    if (streamingMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeScrollToBottom());
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -44,13 +85,11 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          // Connection + status indicator
           ConnectionStatus(
             status: appState.chatStatus,
             isStreaming: appState.isStreaming,
           ),
 
-          // Messages list
           Expanded(
             child: messages.isEmpty && streamingMessage == null
                 ? Center(
@@ -75,7 +114,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemCount: messages.length +
                         (streamingMessage != null ? 1 : 0),
                     itemBuilder: (context, index) {
-                      // Last item = streaming message
                       if (streamingMessage != null &&
                           index == messages.length) {
                         return ChatBubble(
@@ -119,7 +157,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
           ),
 
-          // Input bar
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(8),
@@ -168,16 +205,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _textController.clear();
     context.read<AppState>().sendMessage(trimmed);
-
-    // Scroll to bottom after a short delay for the message to appear
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    Future.delayed(const Duration(milliseconds: 100), () => _scrollToBottom());
   }
 }

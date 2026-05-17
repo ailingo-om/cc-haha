@@ -55,6 +55,9 @@ class AppState extends ChangeNotifier {
   ChatMessage? _streamingMessage;
   ChatMessage? get streamingMessage => _streamingMessage;
 
+  /// Cache last message timestamp per session for incremental loading.
+  final Map<String, String> _sessionLastTimestamps = {};
+
   // ─── Auth / Connection ────────────────────────────────────────────────
 
   Future<void> initialize() async {
@@ -186,9 +189,10 @@ class AppState extends ChangeNotifier {
     _chatStatus = 'Loading...';
     notifyListeners();
 
-    // Load existing messages via REST API
+    // Load existing messages via REST API (incremental: only new since last visit)
     try {
-      final rawMessages = await api.getMessages(sessionId);
+      final since = _sessionLastTimestamps[sessionId];
+      final rawMessages = await api.getMessages(sessionId, since: since);
       for (final m in rawMessages) {
         final type = m['type'] as String?;
         final content = m['content'];
@@ -239,6 +243,13 @@ class AppState extends ChangeNotifier {
               text: text,
             ));
             break;
+        }
+      }
+      // Update cache with the most recent message timestamp
+      if (rawMessages.isNotEmpty) {
+        final lastTimestamp = rawMessages.last['timestamp'] as String?;
+        if (lastTimestamp != null) {
+          _sessionLastTimestamps[sessionId] = lastTimestamp;
         }
       }
     } catch (e) {

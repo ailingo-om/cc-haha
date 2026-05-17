@@ -1375,17 +1375,30 @@ export class SessionService {
   /**
    * Get only the messages for a session (lighter than full detail).
    */
-  async getSessionMessages(sessionId: string): Promise<MessageEntry[]> {
+  async getSessionMessages(sessionId: string, since?: string): Promise<MessageEntry[]> {
     const found = await this.findSessionFile(sessionId)
     if (!found) {
       throw ApiError.notFound(`Session not found: ${sessionId}`)
     }
 
     const entries = await this.readJsonlFile(found.filePath)
+    let messages = this.entriesToMessages(entries)
+
+    // Filter by since timestamp for incremental loading
+    if (since) {
+      const sinceDate = new Date(since).getTime()
+      if (!isNaN(sinceDate)) {
+        messages = messages.filter((m) => {
+          const msgTime = new Date(m.timestamp).getTime()
+          return msgTime > sinceDate
+        })
+      }
+    }
+
     return await this.appendSubagentToolMessages(
       found.projectDir,
       sessionId,
-      this.entriesToMessages(entries),
+      messages,
     )
   }
 

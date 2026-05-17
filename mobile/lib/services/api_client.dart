@@ -93,8 +93,12 @@ class ApiClient {
     await patch('/api/sessions/$sessionId', body: {'title': title});
   }
 
-  Future<List<Map<String, dynamic>>> getMessages(String sessionId) async {
-    final data = await get('/api/sessions/$sessionId/messages');
+  Future<List<Map<String, dynamic>>> getMessages(String sessionId, {String? since}) async {
+    var path = '/api/sessions/$sessionId/messages';
+    if (since != null) {
+      path += '?since=${Uri.encodeComponent(since)}';
+    }
+    final data = await get(path);
     final messages = data['messages'] as List<dynamic>? ?? [];
     return messages.cast<Map<String, dynamic>>();
   }

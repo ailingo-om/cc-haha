@@ -101,7 +101,7 @@ export async function handleSessionsApi(
           { status: 405 }
         )
       }
-      return await getSessionMessages(sessionId)
+      return await getSessionMessages(sessionId, url)
     }
 
     if (subResource === 'git-info') {
@@ -226,9 +226,13 @@ async function getSession(sessionId: string): Promise<Response> {
   return Response.json(detail)
 }
 
-async function getSessionMessages(sessionId: string): Promise<Response> {
+async function getSessionMessages(
+  sessionId: string,
+  url?: URL,
+): Promise<Response> {
+  const since = url?.searchParams.get('since') ?? undefined
   const [messages, taskNotifications] = await Promise.all([
-    sessionService.getSessionMessages(sessionId),
+    sessionService.getSessionMessages(sessionId, since),
     sessionService.getSessionTaskNotifications(sessionId),
   ])
   return Response.json({ messages, taskNotifications })

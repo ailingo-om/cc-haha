@@ -111,9 +111,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   TextFormField(
                     controller: _keyController,
                     decoration: InputDecoration(
-                      labelText: 'API Key (optional)',
-                      hintText: 'Server auth disabled in mobile mode',
-                      prefixIcon: const Icon(Icons.vpn_key_outlined),
+                      labelText: 'Password',
+                      hintText: 'Server REMOT_PASSWORD',
+                      prefixIcon: const Icon(Icons.lock_outlined),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -128,7 +128,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     obscureText: _obscureKey,
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) {
-                        return 'API key is required';
+                        return 'Password is required';
                       }
                       return null;
                     },

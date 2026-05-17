@@ -62,6 +62,12 @@ export async function validateRequestAuth(
       return { valid: true }
     }
 
+    // Mobile mode: allow REMOT_PASSWORD as auth token
+    const remotePassword = process.env.REMOT_PASSWORD
+    if (remotePassword && token === remotePassword) {
+      return { valid: true }
+    }
+
     // Fallback to H5 token validation
     const h5AccessService = new H5AccessService()
     if (await h5AccessService.validateToken(token)) {
