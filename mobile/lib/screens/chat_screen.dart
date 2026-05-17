@@ -104,6 +104,10 @@ class _ChatScreenState extends State<ChatScreen> {
             workDir: appState.currentWorkDir,
           ),
 
+          // Streaming status banner
+          if (appState.isStreaming || appState.chatStatus.isNotEmpty)
+            _buildStreamingBanner(appState, colorScheme),
+
           Expanded(
             child: messages.isEmpty && streamingMessage == null
                 ? Center(
@@ -201,9 +205,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           isDense: true,
                         ),
                         enabled: !appState.isStreaming,
-                        textInputAction: TextInputAction.send,
+                        textInputAction: TextInputAction.newline,
                         maxLines: 4,
-                        minLines: 1,
+                        minLines: 2,
                         onSubmitted: (_) => _send(_textController.text),
                       ),
                     ),
@@ -224,6 +228,62 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStreamingBanner(AppState appState, ColorScheme colorScheme) {
+    final isWaiting = appState.chatStatus == 'Thinking...' && !appState.isStreaming;
+    final statusText = appState.chatStatus.isNotEmpty ? appState.chatStatus : 'Processing...';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            statusText,
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          if (isWaiting) ...[
+            const SizedBox(width: 6),
+            _waitingDots(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _waitingDots() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 1200),
+      builder: (_, v, __) {
+        final n = (v * 3).floor() + 1;
+        final dots = List.filled(n, '.').join();
+        return Text(
+          dots,
+          style: TextStyle(
+            fontSize: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.bold,
+          ),
+        );
+      },
     );
   }
 
